@@ -30,7 +30,7 @@ services:
       retries: 20
 
   gate-ms:
-    image: ${GATE_IMAGE}          # <- construida localmente en tu repo safe-gate-ms
+    image: ${GATE_IMAGE}
     container_name: safe_gate
     depends_on:
       postgres:
@@ -51,7 +51,7 @@ services:
       - "${GATE_PORT}:8080"
 
   zone-ms:
-    image: ${ZONE_IMAGE}          # <- construida localmente en tu repo safe-zone-ms
+    image: ${ZONE_IMAGE}
     container_name: safe_zone
     depends_on:
       postgres:
