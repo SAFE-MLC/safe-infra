@@ -38,7 +38,7 @@ const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
   `;
   const { rows: tickets } = await PG.query(qTickets, [EVENT_ID]);
   for (const r of tickets) {
-    await redis.setex(`ticket:${r.ticket_id}`, 120, JSON.stringify({
+    await redis.setex(`ticket:${r.ticket_id}`, 3600, JSON.stringify({
       status: r.status,
       entitlements: r.entitlements || [],
       eventId: r.event_id
