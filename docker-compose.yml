@@ -1,0 +1,98 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: safe_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${PG_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql/01_schema_min.sql:/docker-entrypoint-initdb.d/01_schema_min.sql:ro
+      - ./sql/02_seed_min.sql:/docker-entrypoint-initdb.d/02_seed_min.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: safe_redis
+    ports:
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  gate-ms:
+    image: ${GATE_IMAGE}          # <- construida localmente en tu repo safe-gate-ms
+    container_name: safe_gate
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      EVENT_ID: ${EVENT_ID}
+      SESSION_KEY: ${SESSION_KEY}
+      REDIS_URL: redis://redis:6379
+      PGHOST: postgres
+      PGUSER: gate_ms
+      PGPASSWORD: gate_pw
+      PGDATABASE: ${POSTGRES_DB}
+      PGPORT: 5432
+    ports:
+      - "${GATE_PORT}:8080"
+
+  zone-ms:
+    image: ${ZONE_IMAGE}          # <- construida localmente en tu repo safe-zone-ms
+    container_name: safe_zone
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      EVENT_ID: ${EVENT_ID}
+      SESSION_KEY: ${SESSION_KEY}
+      REDIS_URL: redis://redis:6379
+      PGHOST: postgres
+      PGUSER: zone_ms
+      PGPASSWORD: zone_pw
+      PGDATABASE: ${POSTGRES_DB}
+      PGPORT: 5432
+    ports:
+      - "${ZONE_PORT}:8080"
+
+  # Opcional: job de warm-up como contenedor
+  warmup:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile
+    container_name: safe_warmup
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      EVENT_ID: ${EVENT_ID}
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      PGPORT: 5432
+      REDIS_URL: redis://redis:6379
+    entrypoint: ["node", "warmup.js"]
+    profiles: ["tools"]   # se ejecuta solo si invocas el perfil
+
+volumes:
+  pgdata:

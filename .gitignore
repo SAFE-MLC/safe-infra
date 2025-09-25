@@ -1,0 +1,19 @@
+# Env & secrets
+.env
+.env.*.local
+
+# Logs / dumps
+*.log
+logs/
+pg_dumps/
+redis-dumps/
+
+# Docker
+*.pid
+**/.DS_Store
+**/Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
