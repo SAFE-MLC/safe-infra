@@ -71,27 +71,5 @@ services:
     ports:
       - "${ZONE_PORT}:8080"
 
-  # Opcional: job de warm-up como contenedor
-  warmup:
-    build:
-      context: ./scripts
-      dockerfile: Dockerfile
-    container_name: safe_warmup
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      EVENT_ID: ${EVENT_ID}
-      PGHOST: postgres
-      PGUSER: ${POSTGRES_USER}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-      PGDATABASE: ${POSTGRES_DB}
-      PGPORT: 5432
-      REDIS_URL: redis://redis:6379
-    entrypoint: ["node", "warmup.js"]
-    profiles: ["tools"]   # se ejecuta solo si invocas el perfil
-
 volumes:
   pgdata:
