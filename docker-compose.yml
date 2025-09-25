@@ -30,7 +30,9 @@ services:
       retries: 20
 
   gate-ms:
-    image: ${GATE_IMAGE}
+    build:
+      context: ../safe-gate-ms
+      dockerfile: Dockerfile
     container_name: safe_gate
     depends_on:
       postgres:
@@ -51,7 +53,9 @@ services:
       - "${GATE_PORT}:8080"
 
   zone-ms:
-    image: ${ZONE_IMAGE}
+    build:
+      context: ../safe-zone-ms
+      dockerfile: Dockerfile
     container_name: safe_zone
     depends_on:
       postgres:
@@ -70,6 +74,24 @@ services:
       PGPORT: 5432
     ports:
       - "${ZONE_PORT}:8080"
+
+  backoffice:
+    build:
+      context: ../Backoffice
+      dockerfile: Dockerfile
+    container_name: safe_backoffice
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      SESSION_KEY: ${SESSION_KEY}
+      APP_PORT: ${BACKOFFICE_PORT}
+    ports:
+      - "${BACKOFFICE_PORT}:${BACKOFFICE_PORT}"
 
 volumes:
   pgdata:
