@@ -1,4 +1,3 @@
-CREATE DATABASE safe;
 \c safe;
 
 CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT NOT NULL,
