@@ -49,8 +49,8 @@ services:
       PGPASSWORD: gate_pw
       PGDATABASE: ${POSTGRES_DB}
       PGPORT: 5432
-    ports:
-      - "${GATE_PORT}:8080"
+    expose:
+      - "8080"
 
   zone-ms:
     build:
@@ -72,8 +72,8 @@ services:
       PGPASSWORD: zone_pw
       PGDATABASE: ${POSTGRES_DB}
       PGPORT: 5432
-    ports:
-      - "${ZONE_PORT}:8080"
+    expose:
+      - "8080"
 
   backoffice:
     build:
@@ -90,8 +90,39 @@ services:
       REDIS_URL: redis://redis:6379/0
       SESSION_KEY: ${SESSION_KEY}
       APP_PORT: ${BACKOFFICE_PORT}
+    expose:
+      - "${BACKOFFICE_PORT}"
+
+  gateway:
+    image: nginx:stable-alpine
+    container_name: safe_gateway
+    depends_on:
+      gate-ms:
+        condition: service_started
+      zone-ms:
+        condition: service_started
+      backoffice:
+        condition: service_started
+    volumes:
+      - ./gateway/nginx.config:/etc/nginx/conf.d/default.conf:ro
     ports:
-      - "${BACKOFFICE_PORT}:${BACKOFFICE_PORT}"
+      - "${GATEWAY_PORT}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  frontend:
+    build:
+      context: ../safe-gate-scan-75
+      dockerfile: Dockerfile
+    container_name: safe_frontend
+    depends_on:
+      gateway:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT}:80"
 
 volumes:
   pgdata:
