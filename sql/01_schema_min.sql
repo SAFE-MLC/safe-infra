@@ -3,29 +3,33 @@
 -- =============================
 -- Tablas
 -- =============================
-CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT NOT NULL,
-  start_at TIMESTAMPTZ NOT NULL, end_at TIMESTAMPTZ NOT NULL,
-  status TEXT NOT NULL DEFAULT 'SCHEDULED');
+CREATE TABLE IF NOT EXISTS events (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  start_at TIMESTAMPTZ NOT NULL,
+  end_at TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'SCHEDULED'
+);
 
-CREATE TABLE gates (
+CREATE TABLE IF NOT EXISTS gates (
   id TEXT PRIMARY KEY,
   event_id TEXT REFERENCES events(id) NOT NULL,
   name TEXT NOT NULL
 );
 
-CREATE TABLE zones (
+CREATE TABLE IF NOT EXISTS zones (
   id TEXT PRIMARY KEY,
   event_id TEXT REFERENCES events(id) NOT NULL,
   name TEXT NOT NULL
 );
 
-CREATE TABLE zone_checkpoints (
+CREATE TABLE IF NOT EXISTS zone_checkpoints (
   id TEXT PRIMARY KEY,
   zone_id TEXT REFERENCES zones(id) NOT NULL,
   name TEXT NOT NULL
 );
 
-CREATE TABLE tickets (
+CREATE TABLE IF NOT EXISTS tickets (
   id TEXT PRIMARY KEY,
   event_id TEXT REFERENCES events(id) NOT NULL,
   holder TEXT,
@@ -33,16 +37,16 @@ CREATE TABLE tickets (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   used_at TIMESTAMPTZ
 );
-CREATE INDEX idx_tickets_event ON tickets(event_id);
-CREATE INDEX idx_tickets_status ON tickets(status);
+CREATE INDEX IF NOT EXISTS idx_tickets_event ON tickets(event_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 
-CREATE TABLE zone_entitlements (
+CREATE TABLE IF NOT EXISTS zone_entitlements (
   ticket_id TEXT REFERENCES tickets(id) NOT NULL,
   zone_id TEXT REFERENCES zones(id) NOT NULL,
   PRIMARY KEY(ticket_id, zone_id)
 );
 
-CREATE TABLE staff (
+CREATE TABLE IF NOT EXISTS staff (
   id TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('GATE','ZONE')),
@@ -51,7 +55,7 @@ CREATE TABLE staff (
   zone_checkpoint_id TEXT REFERENCES zone_checkpoints(id)
 );
 
-CREATE TABLE ticket_scans (
+CREATE TABLE IF NOT EXISTS ticket_scans (
   id BIGSERIAL PRIMARY KEY,
   ticket_id TEXT REFERENCES tickets(id) NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('GATE','ZONE')),
@@ -59,9 +63,9 @@ CREATE TABLE ticket_scans (
   zone_checkpoint_id TEXT REFERENCES zone_checkpoints(id),
   ts TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_ticket_scans_ticket ON ticket_scans(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_scans_ticket ON ticket_scans(ticket_id);
 
-CREATE TABLE zone_presence (
+CREATE TABLE IF NOT EXISTS zone_presence (
   id BIGSERIAL PRIMARY KEY,
   ticket_id TEXT REFERENCES tickets(id) NOT NULL,
   zone_id TEXT REFERENCES zones(id) NOT NULL,
@@ -69,7 +73,7 @@ CREATE TABLE zone_presence (
   direction TEXT NOT NULL CHECK (direction IN ('IN')),
   ts TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX idx_zone_presence_zone ON zone_presence(zone_id);
+CREATE INDEX IF NOT EXISTS idx_zone_presence_zone ON zone_presence(zone_id);
 
 -- =============================
 -- Funciones
@@ -95,11 +99,13 @@ RETURNS VOID LANGUAGE sql AS $$
   VALUES (p_ticket_id, p_zone_id, p_checkpoint_id, 'IN', NOW());
 $$;
 
--- Asegura owner y SECURITY DEFINER (para evitar problemas de privilegios internos)
+-- Asegurar owner y SECURITY DEFINER + search_path fijo
 ALTER FUNCTION consume_ticket(TEXT, TEXT) OWNER TO postgres;
 ALTER FUNCTION zone_enter(TEXT, TEXT, TEXT) OWNER TO postgres;
 ALTER FUNCTION consume_ticket(TEXT, TEXT) SECURITY DEFINER;
 ALTER FUNCTION zone_enter(TEXT, TEXT, TEXT) SECURITY DEFINER;
+ALTER FUNCTION consume_ticket(TEXT, TEXT) SET search_path = public;
+ALTER FUNCTION zone_enter(TEXT, TEXT, TEXT) SET search_path = public;
 
 -- =============================
 -- Roles (idempotente)
@@ -119,24 +125,24 @@ END $$;
 -- =============================
 GRANT USAGE ON SCHEMA public TO gate_ms, zone_ms;
 
--- Tablas
+-- Gate MS: lee/consume tickets y registra escaneos
 GRANT SELECT, UPDATE ON TABLE tickets TO gate_ms;
 GRANT INSERT ON TABLE ticket_scans TO gate_ms;
-
-GRANT SELECT ON TABLE zone_entitlements TO gate_ms, zone_ms;
-GRANT SELECT ON TABLE zones, zone_checkpoints, gates TO gate_ms, zone_ms;
-
-GRANT INSERT ON TABLE zone_presence TO zone_ms;
-
--- Funciones
+GRANT SELECT ON TABLE zones, zone_checkpoints, gates, zone_entitlements, events TO gate_ms;
 GRANT EXECUTE ON FUNCTION consume_ticket(TEXT, TEXT) TO gate_ms;
+
+-- Zone MS: valida derecho de zona y registra presencia
+-- (🔧 FIX principal) dar SELECT sobre tickets
+GRANT SELECT ON TABLE tickets TO zone_ms;
+GRANT SELECT ON TABLE zones, zone_checkpoints, gates TO zone_ms;
+GRANT SELECT ON TABLE zone_entitlements TO zone_ms;
+GRANT SELECT ON TABLE events TO zone_ms;
+GRANT INSERT ON TABLE zone_presence TO zone_ms;
 GRANT EXECUTE ON FUNCTION zone_enter(TEXT, TEXT, TEXT) TO zone_ms;
 
--- =============================
--- **Secuencias** (clave para evitar "permission denied for sequence ..._id_seq")
--- =============================
+-- Secuencias necesarias para inserts (ticket_scans, zone_presence)
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO gate_ms, zone_ms;
 
--- Que futuras secuencias también hereden estos permisos
+-- Defaults futuros
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO gate_ms, zone_ms;
